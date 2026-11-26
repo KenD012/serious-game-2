@@ -23,12 +23,12 @@ const PPM = 4
 const SUMMIT_M = 500
 const SUMMIT_Y = -SUMMIT_M * PPM // -2000
 
-const GRAVITY = 260
-const MAX_CABLE = 92
-const MIN_CABLE = 14
-const HOOK_SPEED = 480
-const WINCH_SPEED = 88
-const SWING_THRUST = 380
+const GRAVITY = 240
+const MAX_CABLE = 104
+const MIN_CABLE = 16
+const HOOK_SPEED = 520
+const WINCH_SPEED = 95
+const SWING_THRUST = 540
 
 // ============================================================================
 // DATA STRUCTURES & GAME STATE
@@ -162,17 +162,19 @@ function shootGrapple() {
 }
 
 function releaseGrapple() {
-    if (grappleMode == 2 && player.vy < -25) {
-        // Slingshot upward boost near arc apex
-        player.vy *= 1.18
-        player.vx *= 1.08
+    if (grappleMode == 2) {
+        // Big slingshot launch boost whenever releasing from a swing!
+        if (player.vy < 15) {
+            player.vy = Math.min(player.vy * 1.32, player.vy - 45)
+        }
+        player.vx *= 1.18
     }
     grappleMode = 0
     latchedRing = null
 }
 
 function latchOnto(lx: number, ly: number, ringObj: RingData) {
-    const clutchSave = !grounded && player.vy > 120
+    const clutchSave = !grounded && player.vy > 110
 
     grappleMode = 2
     hookX = lx
@@ -181,21 +183,22 @@ function latchOnto(lx: number, ly: number, ringObj: RingData) {
     emberTimer = 0
 
     const dist = Math.sqrt((lx - player.x) ** 2 + (ly - player.y) ** 2)
-    // Pull cable slightly taut on latch so you immediately lift off ledges & start swinging!
-    cableLength = Math.max(MIN_CABLE, Math.min(MAX_CABLE, dist - 8))
+    // Pull cable taut on latch so you immediately lift off ledges & enter a wide swing arc!
+    cableLength = Math.max(24, Math.min(MAX_CABLE, dist - 12))
 
     if (clutchSave) {
         midAirSaves++
         const dir = player.x < lx ? 1 : -1
-        player.vx += dir * Math.min(115, player.vy * 0.4)
+        player.vx += dir * Math.min(140, player.vy * 0.45)
         music.playTone(980, 75)
         showToast("Clutch mid-air catch!")
     } else {
-        // Give a gentle initial pendulum swing kick toward the anchor if nearly stationary
-        if (Math.abs(player.vx) < 25 && ly < player.y) {
-            player.vx += (lx >= player.x ? 1 : -1) * 55
-            player.vy = Math.min(player.vy, -35)
+        // Strong initial pendulum swing launch toward the anchor
+        const swingDir = lx >= player.x ? 1 : -1
+        if (Math.abs(player.vx) < 75) {
+            player.vx += swingDir * 85
         }
+        player.vy = Math.min(player.vy, -55)
         music.playTone(ringObj ? 780 : 340, 45)
     }
 }
@@ -259,11 +262,16 @@ game.onUpdate(function () {
         const ty = rx / rLen
 
         if (ix != 0) {
-            // Combine tangential pendulum pump + direct horizontal impulse for effortless swinging
-            player.vx += (tx * ix * SWING_THRUST + ix * 140) * dt
+            // High-power tangential pendulum pump + horizontal impulse
+            player.vx += (tx * ix * SWING_THRUST + ix * 190) * dt
             player.vy += ty * ix * SWING_THRUST * dt
             if (ix < 0) player.setImage(IMG_CHAIR_LEFT)
             else player.setImage(IMG_CHAIR_RIGHT)
+        } else {
+            // Gentle auto-pump in your current swing direction so holding A keeps swinging!
+            const autoDir = player.vx >= 0 ? 1 : -1
+            player.vx += tx * autoDir * 165 * dt
+            player.vy += ty * autoDir * 165 * dt
         }
     }
 
@@ -405,7 +413,7 @@ game.onUpdate(function () {
     scene.centerCameraAt(camX, camY)
 })
 
-
+//2
 /**
  * 2. PIXEL-ART SPRITE ASSETS — THE IRON SEAT
  * 16-color pixel art for the aviator armchair climber, gold/cyan/ember rings,
@@ -492,8 +500,7 @@ const IMG_SPIRE_BEACON = img`
 `
 
 
-
-
+//3
 /**
  * 3. MAP, LEVEL GENERATOR, RENDERER & GAME START — THE IRON SEAT
  * Builds the 4-biome 500m vertical mountain (Rusted Foundry, Spring Clocktower,
@@ -560,17 +567,19 @@ function buildWorld() {
     // Ground Steel Deck
     addLedge(0, 8, 220, 16, "steel")
 
-    // BIOME I: 0m - 120m (Rusted Foundry)
-    addLedge(-44, -26, 44, 7, "timber")
-    addLedge(44, -52, 44, 7, "timber")
-    addRing(-16, -68, 0, 0, "gold")
-    addRing(32, -96, 0, 0, "gold")
+    // BIOME I: 0m - 120m (Rusted Foundry — Continuous Swing Ring Chains)
+    addRing(-22, -46, 0, 0, "gold")
+    addRing(26, -82, 0, 0, "gold")
+    addRing(-28, -118, 0, 0, "gold")
 
-    for (let m = 24; m < 120; m += 18) {
+    for (let m = 36; m < 120; m += 15) {
         const y = -m * PPM
-        const side = Math.round(m / 18) % 2 == 0 ? -1 : 1
-        addLedge(side * 46, y, 44, 7, m % 36 == 0 ? "steel" : "timber")
-        addRing(side * 14, y - 30, 0, 0, "gold")
+        const step = Math.round((m - 36) / 15)
+        const side = step % 2 == 0 ? 1 : -1
+        addRing(side * 34, y, 0, 0, "gold")
+        if (step % 3 == 0) {
+            addLedge(-side * 54, y + 14, 34, 7, "timber")
+        }
     }
 
     // BIOME II: 120m - 260m (Springwork Clocktower - Brass Bumpers + Swing Rings)
